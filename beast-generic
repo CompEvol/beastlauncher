@@ -1,0 +1,91 @@
+#!/bin/sh
+# Generic Launcher script for BEAST2-based applications
+
+# Determine the location of this script
+if [ -z "$SCRIPT_LOCATION" ]; then
+    ## resolve links - $0 may be a link to application
+    PRG="$0"
+    # need this for relative symlinks
+    while [ -h "$PRG" ]; do
+        ls=`ls -ld "$PRG"`
+        link=`expr "$ls" : '.*-> \(.*\)$'`
+        if expr "$link" : '/.*' > /dev/null; then
+            PRG="$link"
+        else
+            PRG="`dirname "$PRG"`/$link"
+        fi
+    done
+    saveddir=`pwd`
+    SCRIPT_LOCATION=`dirname "$PRG"`
+    cd "$saveddir"
+fi
+
+# Find BEAST 2.7.x installation
+if [ -z "$BEAST" ]; then
+    # macOS Applications directory - look for any BEAST 2.7.x
+    if [ -d "/Applications" ]; then
+        BEAST_DIR=$(find /Applications -maxdepth 1 -type d -name "BEAST 2.7*" | sort -r | head -n 1)
+        if [ ! -z "$BEAST_DIR" ]; then
+            BEAST="$BEAST_DIR"
+        fi
+    fi
+
+    # Home Applications directory - look for any BEAST 2.7.x
+    if [ -z "$BEAST" ] && [ -d "$HOME/Applications" ]; then
+        BEAST_DIR=$(find $HOME/Applications -maxdepth 1 -type d -name "BEAST 2.7*" | sort -r | head -n 1)
+        if [ ! -z "$BEAST_DIR" ]; then
+            BEAST="$BEAST_DIR"
+        fi
+    fi
+
+    # Check specific version as fallback
+    if [ -z "$BEAST" ]; then
+        if [ -d "/Applications/BEAST 2.7.7" ]; then
+            BEAST="/Applications/BEAST 2.7.7"
+        elif [ -d "$HOME/Applications/BEAST 2.7.7" ]; then
+            BEAST="$HOME/Applications/BEAST 2.7.7"
+        elif [ -d "/usr/local/share/beast" ]; then
+            # Check if this is a 2.7.x version in /usr/local/share/beast
+            if [ -f "/usr/local/share/beast/lib/version.xml" ]; then
+                VERSION=$(grep "2.7" "/usr/local/share/beast/lib/version.xml")
+                if [ ! -z "$VERSION" ]; then
+                    BEAST="/usr/local/share/beast"
+                fi
+            else
+                BEAST="/usr/local/share/beast"
+            fi
+        fi
+    fi
+
+    # If we still can't find BEAST 2.7.x, try to fall back to bundled dependencies
+    if [ -z "$BEAST" ]; then
+        echo "BEAST 2.7.x installation not found. Using bundled dependencies."
+        BEAST="bundled"
+    else
+        echo "Found BEAST installation at: $BEAST"
+    fi
+fi
+
+# Set Java
+JAVA="java"
+if [ "$BEAST" != "bundled" ] && [ -x "${BEAST}/jre/bin/java" ]; then
+    JAVA="${BEAST}/jre/bin/java"
+fi
+
+# Set classpath with beast-launcher and generic-launcher
+CP="${SCRIPT_LOCATION}/beastlauncher-0.1.0-SNAPSHOT.jar"
+if [ "$BEAST" != "bundled" ]; then
+    # Add BEAST launcher
+    if [ -f "${BEAST}/lib/launcher.jar" ]; then
+        CP="${CP}:${BEAST}/lib/launcher.jar"
+    fi
+    
+    # Set BEAST_PACKAGE_PATH system property
+    if [ -d "${BEAST}/lib/packages" ]; then
+        BEAST_PACKAGE_PATH="${BEAST}/lib/packages"
+        echo "Setting BEAST_PACKAGE_PATH to: ${BEAST_PACKAGE_PATH}"
+    fi
+fi
+
+# Run the generic launcher
+"$JAVA" -Dlauncher.wait.for.exit=true -Xss256m -Xmx4g -Dbeast.user.package.dir=user.pkgs -DBEAST_PACKAGE_PATH="${BEAST_PACKAGE_PATH}" -cp "$CP" beast.app.launcher.BeastGenericLauncher "$@"
